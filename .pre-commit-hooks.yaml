@@ -1,0 +1,41 @@
+# Hook definitions for https://pre-commit.com
+#
+#   - repo: https://github.com/zahidhasann88/ghostcall-lint
+#     rev: v0.1.0
+#     hooks:
+#       - id: ghostcall
+#         args: ["--python", ".venv/bin/python"]
+#
+# pre-commit appends the staged filenames, and `--staged` limits the report to the
+# lines this commit adds or changes (`git diff --cached HEAD`), so an old problem in
+# a file you touch does not block the commit -- only new ones do.
+# The environment to check against can also be set once in pyproject.toml:
+#
+#   [tool.ghostcall]
+#   python = ".venv/bin/python"
+#   include-medium = true
+- id: ghostcall
+  name: ghostcall (hallucinated/outdated API usage)
+  description: >
+    Check the lines a commit adds against the library versions installed in the
+    target environment.  Reports hallucinated attributes, keywords the installed
+    signature does not accept, wrong arity, missing required arguments, removed
+    modules and deprecated APIs, including medium-confidence findings from
+    instance tracking.
+  entry: ghostcall check --staged
+  language: python
+  types: [python]
+  pass_filenames: true
+  require_serial: true
+  args: ["--include-medium"]
+- id: ghostcall-high-confidence
+  name: ghostcall (high confidence only)
+  description: >
+    The same check, restricted to findings ghostcall can prove without instance
+    tracking or return-type inference.  Use this on a large existing codebase
+    where medium-confidence findings would be noise.
+  entry: ghostcall check --staged
+  language: python
+  types: [python]
+  pass_filenames: true
+  require_serial: true

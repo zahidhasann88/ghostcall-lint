@@ -1,0 +1,20 @@
+# Direct dependencies of the benchmark environment (bench/envs/main).
+#
+# Rebuild with:
+#     uv venv bench/envs/main --python 3.12
+#     uv pip install --python bench/envs/main/bin/python -r bench/requirements.txt
+#
+# Every fact in bench/hallucinations/ was verified against exactly these versions.
+# Changing a version means re-verifying the corpus and updating PINNED_VERSIONS in
+# tests/test_bench.py -- that test fails on purpose if the two drift apart.
+pandas==2.2.3
+numpy==2.2.2
+SQLAlchemy==2.0.36
+requests==2.32.3
+httpx==0.28.1
+pydantic==2.10.4
+fastapi==0.115.6
+click==8.1.8
+rich==13.9.4
+# Stubs make the corpus's third-party types readable statically.
+types-requests==2.32.0.20241016

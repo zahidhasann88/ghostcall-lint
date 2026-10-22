@@ -1,0 +1,179 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The corpus facts are verified against a pinned interpreter; the suite must not
+  # silently skip when that environment is missing.
+  GHOSTCALL_REQUIRE_ENV: "1"
+
+jobs:
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --all-extras
+      - name: ruff check
+        run: uv run ruff check src tests bench/tools
+      - name: ruff format --check
+        run: uv run ruff format --check src tests bench/tools
+
+  types:
+    name: mypy --strict
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras
+      - name: mypy
+        run: uv run mypy
+
+  test:
+    name: pytest (${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras --python ${{ matrix.python-version }}
+      - name: Build the pinned benchmark environment
+        run: |
+          uv venv bench/envs/main --python 3.12
+          uv pip install --python bench/envs/main/bin/python -r bench/requirements.txt
+      - name: pytest
+        run: uv run pytest -q
+      - name: Benchmark must stay at zero false positives
+        run: uv run ghostcall bench --python bench/envs/main/bin/python --include-medium
+
+  hooks:
+    name: pre-commit hook smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-extras
+      - name: Build the pinned benchmark environment
+        run: |
+          uv venv bench/envs/main --python 3.12
+          uv pip install --python bench/envs/main/bin/python -r bench/requirements.txt
+      - name: The hook must fail on a hallucinated call
+        run: |
+          mkdir -p /tmp/hookcheck
+          cat > /tmp/hookcheck/bad.py <<'PY'
+          import pandas as pd
+
+          pd.read_csv("data.csv", skip_blank=True)
+          PY
+          set +e
+          uv run ghostcall check --python bench/envs/main/bin/python \
+              --stdin-filename bad.py - < /tmp/hookcheck/bad.py
+          code=$?
+          set -e
+          # Exactly 1 ("findings"): 2 or 3 would mean the hook is broken, not working.
+          if [ "$code" -ne 1 ]; then
+            echo "expected exit code 1 for hallucinated code, got $code" >&2
+            exit 1
+          fi
+      - name: The hook must pass on clean code
+        run: |
+          cat > /tmp/hookcheck/good.py <<'PY'
+          import pandas as pd
+
+          frame = pd.DataFrame({"a": [1]})
+          print(frame.mean(numeric_only=True))
+          PY
+          uv run ghostcall check --python bench/envs/main/bin/python \
+            --stdin-filename good.py - < /tmp/hookcheck/good.py
+      - name: The pre-commit hook only judges staged lines
+        run: |
+          repo=/tmp/hookrepo
+          git init -q -b main "$repo"
+          git -C "$repo" config user.email ci@example.invalid
+          git -C "$repo" config user.name ci
+          printf 'import requests\n\nrequests.get("x", retries=1)\n' > "$repo/old.py"
+          git -C "$repo" add old.py
+          git -C "$repo" commit -q -m initial
+          printf '\nrequests.get("x", timeout=1)\n' >> "$repo/old.py"
+          git -C "$repo" add old.py
+          # The pre-existing bad call on line 3 is not part of this commit.
+          (cd "$repo" && uv run --project "$GITHUB_WORKSPACE" ghostcall check --staged \
+              --python "$GITHUB_WORKSPACE/bench/envs/main/bin/python" old.py)
+
+  smoke:
+    name: smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras --python 3.12
+      - name: Build the pinned benchmark environment
+        run: |
+          uv venv bench/envs/main --python 3.12
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            echo "BENCH_PY=bench/envs/main/Scripts/python.exe" >> "$GITHUB_ENV"
+          else
+            echo "BENCH_PY=bench/envs/main/bin/python" >> "$GITHUB_ENV"
+          fi
+      - run: uv pip install --python "$BENCH_PY" -r bench/requirements.txt
+      - name: CLI, environment and import-free tests
+        run: >
+          uv run pytest -q tests/test_cli.py tests/test_import_free.py
+          tests/test_env.py tests/test_fixtures.py
+      - name: Benchmark
+        run: uv run ghostcall bench --python "$BENCH_PY" --include-medium
+
+  action:
+    name: composite action (self-test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write a hallucinated call to check
+        run: |
+          mkdir -p /tmp/action-check
+          printf 'import requests\n\nrequests.get("https://x.invalid", retries=2)\n' \
+            > /tmp/action-check/bad.py
+      - name: Run the action from this checkout
+        id: ghostcall
+        uses: ./
+        with:
+          requirements: bench/requirements.txt
+          paths: /tmp/action-check
+          diff: none
+          fail-on-findings: "false"
+          # Test the checked-out code, not the latest release.
+          package: ${{ github.workspace }}
+      - name: The action must report the finding
+        run: |
+          if [ "${{ steps.ghostcall.outputs.exit-code }}" != "1" ]; then
+            echo "expected exit code 1, got ${{ steps.ghostcall.outputs.exit-code }}" >&2
+            exit 1
+          fi

@@ -1,0 +1,24 @@
+# virtualenvs and generated state
+.venv/
+bench/envs/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# build artifacts
+build/
+dist/
+*.egg-info/
+
+# editors
+.idea/
+.vscode/
+
+# local notes
+build-docs.txt

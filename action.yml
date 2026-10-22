@@ -1,0 +1,179 @@
+name: ghostcall
+description: >
+  Find hallucinated and outdated library API usage by checking Python code against
+  the library versions actually installed in the target environment. Annotates the
+  pull request diff and can upload SARIF to code scanning.
+author: Zahid Hasan
+branding:
+  icon: search
+  color: purple
+
+inputs:
+  python:
+    description: >
+      Interpreter of an environment the workflow already prepared (for example
+      .venv/bin/python). When empty, the action builds one from `requirements`
+      and/or `install-command`.
+    required: false
+    default: ""
+  python-version:
+    description: Python version for the target environment the action builds.
+    required: false
+    default: "3.12"
+  requirements:
+    description: requirements file installed into the target environment.
+    required: false
+    default: ""
+  install-command:
+    description: >
+      Extra command run with the target environment activated, e.g.
+      `pip install -e .` or `uv pip install -r requirements.lock`.
+    required: false
+    default: ""
+  paths:
+    description: Files or directories to check (space separated).
+    required: false
+    default: "."
+  diff:
+    description: >
+      Git ref to diff against so only changed lines are reported. Defaults to
+      the pull request base commit on pull_request events, and to a full scan
+      otherwise. Set to "none" to always scan everything.
+    required: false
+    default: ""
+  include-medium:
+    description: Also report medium-confidence findings (instance tracking).
+    required: false
+    default: "false"
+  sarif:
+    description: Also upload a SARIF report to GitHub code scanning.
+    required: false
+    default: "false"
+  fail-on-findings:
+    description: Fail the step when ghostcall reports findings.
+    required: false
+    default: "true"
+  args:
+    description: Extra arguments passed to `ghostcall check`.
+    required: false
+    default: ""
+  version:
+    description: ghostcall-lint version to install (empty for the latest release).
+    required: false
+    default: ""
+  package:
+    description: >
+      pip requirement to install instead of the release, e.g. a local path or a
+      git URL. Overrides `version`; used by this repository to test itself.
+    required: false
+    default: ""
+
+outputs:
+  exit-code:
+    description: "ghostcall's exit code: 0 clean, 1 findings, 2 usage error, 3 environment error."
+    value: ${{ steps.run.outputs.exit-code }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Prepare the target environment
+      id: target
+      shell: bash
+      env:
+        GC_PYTHON: ${{ inputs.python }}
+        GC_REQUIREMENTS: ${{ inputs.requirements }}
+        GC_INSTALL: ${{ inputs.install-command }}
+        GC_BIN: ${{ runner.os == 'Windows' && 'Scripts' || 'bin' }}
+      run: |
+        set -euo pipefail
+        if [ -n "$GC_PYTHON" ]; then
+          echo "python=$GC_PYTHON" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        python -m venv "$RUNNER_TEMP/ghostcall-target"
+        target="$RUNNER_TEMP/ghostcall-target/$GC_BIN/python"
+        if [ -n "$GC_REQUIREMENTS" ]; then
+          "$target" -m pip install --disable-pip-version-check -r "$GC_REQUIREMENTS"
+        fi
+        if [ -n "$GC_INSTALL" ]; then
+          # shellcheck disable=SC1090
+          source "$RUNNER_TEMP/ghostcall-target/$GC_BIN/activate"
+          eval "$GC_INSTALL"
+          deactivate
+        fi
+        echo "python=$target" >> "$GITHUB_OUTPUT"
+
+    - name: Install ghostcall
+      id: tool
+      shell: bash
+      env:
+        GC_VERSION: ${{ inputs.version }}
+        GC_PACKAGE: ${{ inputs.package }}
+        GC_BIN: ${{ runner.os == 'Windows' && 'Scripts' || 'bin' }}
+      run: |
+        set -euo pipefail
+        # ghostcall lives in its own environment so it never mixes with the code under test.
+        python -m venv "$RUNNER_TEMP/ghostcall-tool"
+        spec="ghostcall-lint"
+        if [ -n "$GC_VERSION" ]; then spec="ghostcall-lint==$GC_VERSION"; fi
+        if [ -n "$GC_PACKAGE" ]; then spec="$GC_PACKAGE"; fi
+        "$RUNNER_TEMP/ghostcall-tool/$GC_BIN/python" -m pip install --disable-pip-version-check "$spec"
+        echo "ghostcall=$RUNNER_TEMP/ghostcall-tool/$GC_BIN/ghostcall" >> "$GITHUB_OUTPUT"
+
+    - name: Run ghostcall
+      id: run
+      shell: bash
+      env:
+        GC: ${{ steps.tool.outputs.ghostcall }}
+        GC_TARGET: ${{ steps.target.outputs.python }}
+        GC_PATHS: ${{ inputs.paths }}
+        GC_DIFF: ${{ inputs.diff }}
+        GC_BASE: ${{ github.event.pull_request.base.sha }}
+        GC_MEDIUM: ${{ inputs.include-medium }}
+        GC_SARIF: ${{ inputs.sarif }}
+        GC_ARGS: ${{ inputs.args }}
+      run: |
+        # GitHub runs this with `bash -e`; ghostcall exits 1 on findings, which
+        # must be recorded below rather than abort the step.
+        set +e
+        set -uo pipefail
+        flags=(--python "$GC_TARGET")
+        ref="$GC_DIFF"
+        if [ -z "$ref" ] && [ -n "$GC_BASE" ]; then ref="$GC_BASE"; fi
+        if [ -n "$ref" ] && [ "$ref" != "none" ]; then
+          # The base commit must be present locally (actions/checkout with fetch-depth: 0).
+          git fetch --no-tags --depth=1 origin "$ref" 2>/dev/null || true
+          flags+=(--diff "$ref")
+        fi
+        if [ "$GC_MEDIUM" = "true" ]; then flags+=(--include-medium); fi
+        # shellcheck disable=SC2206
+        extra=($GC_ARGS)
+        # shellcheck disable=SC2206
+        paths=($GC_PATHS)
+        "$GC" check "${flags[@]}" "${extra[@]}" --format github "${paths[@]}"
+        code=$?
+        if [ "$GC_SARIF" = "true" ]; then
+          "$GC" check "${flags[@]}" "${extra[@]}" --format sarif \
+            --output "$RUNNER_TEMP/ghostcall.sarif" "${paths[@]}" || true
+        fi
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        echo "sarif=$RUNNER_TEMP/ghostcall.sarif" >> "$GITHUB_OUTPUT"
+        if [ "$code" -ge 2 ]; then
+          echo "::error title=ghostcall::ghostcall could not run (exit code $code)"
+        fi
+
+    - name: Upload SARIF
+      if: ${{ inputs.sarif == 'true' && always() }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ steps.run.outputs.sarif }}
+        category: ghostcall
+
+    - name: Fail on findings
+      if: ${{ steps.run.outputs.exit-code != '0' && (inputs.fail-on-findings == 'true' || steps.run.outputs.exit-code >= 2) }}
+      shell: bash
+      run: exit "${{ steps.run.outputs.exit-code }}"
