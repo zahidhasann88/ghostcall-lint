@@ -156,7 +156,7 @@ if md is not None:
         try:
             name = dist.metadata["Name"]
             if not name or name in out["dist_versions"]:
-                continue 
+                continue
             out["dist_versions"][name] = dist.version
             names, declared = top_level_names(dist)
             for top in names:
