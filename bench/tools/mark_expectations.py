@@ -52,7 +52,7 @@ def expand(path: Path) -> bool:
         (line.replace(_PLACEHOLDER, str(index + 2)) if _PLACEHOLDER in line else line)
         for index, line in enumerate(expanded)
     ]
-    path.write_text("\n".join(rewritten) + "\n", encoding="utf-8")
+    path.write_text("\n".join(rewritten) + "\n", encoding="utf-8", newline="\n")
     return True
 
 

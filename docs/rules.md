@@ -53,7 +53,7 @@ An attribute or method that the installed library does not define. Medium confid
 ```python
 import pandas as pd
 
-pd.read_csvv('f.csv')
+pd.read_csvv("f.csv")
 ```
 
 ## GC004 — unknown keyword argument
@@ -65,7 +65,7 @@ A keyword argument the installed signature does not accept.
 ```python
 import pandas as pd
 
-pd.read_csv('f.csv', skip_blank=True)
+pd.read_csv("f.csv", skip_blank=True)
 ```
 
 ## GC005 — too many positional arguments
@@ -77,7 +77,7 @@ More positional arguments than the installed signature accepts.
 ```python
 import json
 
-json.dumps({}, None, None, None, None, None, 'x', 'y')
+json.dumps({}, None, None, None, None, None, "x", "y")
 ```
 
 ## GC006 — missing required argument
@@ -101,5 +101,5 @@ The installed library marks the API as deprecated (`@deprecated` or a `.. deprec
 ```python
 import pandas as pd
 
-pd.DataFrame({'a': [1]}).applymap(str)
+pd.DataFrame({"a": [1]}).applymap(str)
 ```

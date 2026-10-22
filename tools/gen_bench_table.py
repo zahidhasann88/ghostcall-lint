@@ -84,7 +84,7 @@ def main() -> int:
             return 1
         print("README.md benchmark block is up to date")
         return 0
-    README.write_text(updated, encoding="utf-8")
+    README.write_text(updated, encoding="utf-8", newline="\n")
     print("updated README.md")
     return 0
 

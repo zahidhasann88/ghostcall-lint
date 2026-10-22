@@ -1,5 +1,8 @@
 # ghostcall
 
+[![CI](https://github.com/zahidhasann88/ghostcall-lint/actions/workflows/ci.yml/badge.svg)](https://github.com/zahidhasann88/ghostcall-lint/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/ghostcall-lint)](https://pypi.org/project/ghostcall-lint/)
+
 Find API calls that don't exist in the library versions you actually have installed.
 
 AI-written code often looks right but targets a different version:

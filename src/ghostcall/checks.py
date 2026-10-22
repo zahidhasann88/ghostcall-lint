@@ -67,8 +67,8 @@ RULES: Mapping[str, RuleDoc] = {
                 "confidence when found through instance tracking or a dynamic base class."
             ),
             when_skipped="the object builds attributes at runtime or could not be read completely",
-            example_bad="import pandas as pd\n\npd.read_csvv('f.csv')",
-            example_good="import pandas as pd\n\npd.read_csv('f.csv')",
+            example_bad='import pandas as pd\n\npd.read_csvv("f.csv")',
+            example_good='import pandas as pd\n\npd.read_csv("f.csv")',
         ),
         RuleDoc(
             code="GC004",
@@ -79,8 +79,8 @@ RULES: Mapping[str, RuleDoc] = {
                 "the function takes `**kwargs`, the call uses `**mapping`, or a decorator may "
                 "change the signature"
             ),
-            example_bad="import pandas as pd\n\npd.read_csv('f.csv', skip_blank=True)",
-            example_good="import pandas as pd\n\npd.read_csv('f.csv', skip_blank_lines=True)",
+            example_bad='import pandas as pd\n\npd.read_csv("f.csv", skip_blank=True)',
+            example_good='import pandas as pd\n\npd.read_csv("f.csv", skip_blank_lines=True)',
         ),
         RuleDoc(
             code="GC005",
@@ -88,7 +88,7 @@ RULES: Mapping[str, RuleDoc] = {
             severity=Severity.ERROR,
             summary="More positional arguments than the installed signature accepts.",
             when_skipped="the function takes `*args` or the call uses `*sequence`",
-            example_bad="import json\n\njson.dumps({}, None, None, None, None, None, 'x', 'y')",
+            example_bad='import json\n\njson.dumps({}, None, None, None, None, None, "x", "y")',
             example_good="import json\n\njson.dumps({}, indent=None)",
         ),
         RuleDoc(
@@ -98,7 +98,7 @@ RULES: Mapping[str, RuleDoc] = {
             summary="A required argument of the installed signature is not passed.",
             when_skipped="the call uses `*args` or `**kwargs` that could supply it",
             example_bad="import requests\n\nrequests.get()",
-            example_good="import requests\n\nrequests.get('https://example.com')",
+            example_good='import requests\n\nrequests.get("https://example.com")',
         ),
         RuleDoc(
             code="GC007",
@@ -109,8 +109,8 @@ RULES: Mapping[str, RuleDoc] = {
                 "`.. deprecated::` docstring)."
             ),
             when_skipped="the deprecation is only mentioned in prose",
-            example_bad="import pandas as pd\n\npd.DataFrame({'a': [1]}).applymap(str)",
-            example_good="import pandas as pd\n\npd.DataFrame({'a': [1]}).map(str)",
+            example_bad='import pandas as pd\n\npd.DataFrame({"a": [1]}).applymap(str)',
+            example_good='import pandas as pd\n\npd.DataFrame({"a": [1]}).map(str)',
         ),
         RuleDoc(
             code="GC000",

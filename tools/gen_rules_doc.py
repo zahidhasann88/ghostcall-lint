@@ -63,7 +63,7 @@ def main() -> int:
         print(f"{OUTPUT} is up to date")
         return 0
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(rendered, encoding="utf-8")
+    OUTPUT.write_text(rendered, encoding="utf-8", newline="\n")
     print(f"wrote {OUTPUT} ({len(RULES)} rules)")
     return 0
 
